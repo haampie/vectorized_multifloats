@@ -84,8 +84,8 @@ random_vec(::Type{MultiFloat{T,N}}, k) where {T,N} =
     [renormalize(MultiFloat(ntuple(i -> rand(T) * eps(T)^(i-1), N))) for _ = 1:k]
 
 function benchmark_dot(::Type{T}) where {T<:MultiFloat}
-    xs = random_vec(T, 4096)
-    ys = random_vec(T, 4096)
+    xs = random_vec(T, 2^13)
+    ys = random_vec(T, 2^13)
 
     @show vectorized_dot(xs, ys) - trivial_dot(xs, ys)
     
@@ -96,7 +96,7 @@ function benchmark_dot(::Type{T}) where {T<:MultiFloat}
 end
 
 function benchmark_sum(::Type{T}) where {T<:MultiFloat}
-    xs = random_vec(T, 4096)
+    xs = random_vec(T, 2^13)
 
     @show vectorized_sum(xs) - trivial_sum(xs)
     
