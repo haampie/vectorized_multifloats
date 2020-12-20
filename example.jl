@@ -97,14 +97,11 @@ end
 
 function benchmark_sum(::Type{T}) where {T<:MultiFloat}
     xs = random_vec(T, 4096)
-    xs_d = DoubleFloat.(xs)
 
     @show vectorized_sum(xs) - trivial_sum(xs)
-    @show DoubleFloat(trivial_sum(xs)) - trivial_sum(xs_d)
     
     vectorized = @benchmark vectorized_sum($xs)
     trivial = @benchmark trivial_sum($xs)
-    doublefloat = @benchmark trivial_sum($xs_d)
 
-    return vectorized, trivial, doublefloat
+    return vectorized, trivial
 end
