@@ -56,6 +56,25 @@ function vectorized_sum(xs::Vector{MultiFloat{T,N}}) where {T,N}
     return +(TupleOfMultiFloat(t)...)
 end
 
+using VectorizationBase: Unroll, vload, vtranspose, unrolleddata
+
+function handwritten_sum(xs::Vector{MultiFloat{T,N}}) where {T,N}
+    M = pick_vector_width(T)
+
+    @assert M == N
+
+    t = zero(MultiFloat{Vec{N,T},N})
+
+    p = stridedpointer(reinterpret(T, xs))
+
+    # load N Multifloats or N*N T's of at a time.
+    for i = 1:N:length(xs)
+        t += MultiFloat(unrolleddata(vtranspose(vload(p, Unroll{1,1,N,1,N,0x0000000000000000}(((i-1)*N+1,))))))
+    end
+
+    return +(TupleOfMultiFloat(t)...)
+end
+
 function trivial_dot(xs, ys)
     t = zero(eltype(xs))
     @inbounds for i = 1:length(xs)
