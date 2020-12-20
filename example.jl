@@ -9,11 +9,23 @@ import DoubleFloats: DoubleFloat
 
 DoubleFloat(x::MultiFloat{T,2}) where {T} = DoubleFloat{T}(x._limbs[1], x._limbs[2])
 
-@generated function MultiFloatOfVec(fs::NTuple{M,MultiFloat{T,N}}) where {T,M,N}
-    exprs = [:(Vec($([:(fs[$j]._limbs[$i]) for j=1:M]...))) for i=1:N]
+using VectorizationBase: VecUnroll, vtranspose, unrolleddata
 
-    return quote
-        MultiFloat(tuple($(exprs...)))
+@generated function MultiFloatOfVec(fs::NTuple{M,MultiFloat{T,N}}) where {T,M,N}
+    if M == N == pick_vector_width(T)
+        to_vecs = [:(Vec(fs[$i]._limbs...)) for i = 1:M]
+        # do a fast transpose.
+        return quote
+            $(Expr(:meta, :inline))
+            MultiFloat(unrolleddata(vtranspose(VecUnroll(tuple($(to_vecs...))))))
+        end
+    else
+        exprs = [:(Vec($([:(fs[$j]._limbs[$i]) for j=1:M]...))) for i=1:N]
+
+        return quote
+            $(Expr(:meta, :inline))
+            MultiFloat(tuple($(exprs...)))
+        end
     end
 end
 
@@ -37,10 +49,10 @@ function vectorized_sum(xs::Vector{MultiFloat{T,N}}) where {T,N}
 
     t = zero(MultiFloat{Vec{M,T},N})
 
-    @inbounds for i = 1:M:length(xs)-M+1
-        t += MultiFloatOfVec(ntuple(k -> xs[i + k - 1], M))
+    for i = 1:M:length(xs)-M+1
+        t += MultiFloatOfVec(ntuple(k -> @inbounds(xs[i + k - 1]), M))
     end
-  
+
     return +(TupleOfMultiFloat(t)...)
 end
 
@@ -57,9 +69,9 @@ function vectorized_dot(xs::Vector{MultiFloat{T,N}}, ys::Vector{MultiFloat{T,N}}
 
     t = zero(MultiFloat{Vec{M,T},N})
 
-    @inbounds for i = 1:M:length(xs)-M+1
-        x = MultiFloatOfVec(ntuple(k -> xs[i + k - 1], M))
-        y = MultiFloatOfVec(ntuple(k -> ys[i + k - 1], M))
+    for i = 1:M:length(xs)-M+1
+        x = MultiFloatOfVec(ntuple(k -> @inbounds(xs[i + k - 1]), M))
+        y = MultiFloatOfVec(ntuple(k -> @inbounds(ys[i + k - 1]), M))
         t += x * y
     end
   
