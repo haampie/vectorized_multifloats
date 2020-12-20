@@ -32,6 +32,7 @@ end
 @generated function TupleOfMultiFloat(fs::MultiFloat{Vec{M,T},N}) where {T,M,N}
     exprs = [:(MultiFloat(tuple($([:(extractelement(fs._limbs[$j], $i)) for j=1:N]...)))) for i=0:M-1]
     return quote
+        $(Expr(:meta, :inline))
         tuple($(exprs...))
     end
 end
@@ -97,6 +98,27 @@ function vectorized_dot(xs::Vector{MultiFloat{T,N}}, ys::Vector{MultiFloat{T,N}}
     return +(TupleOfMultiFloat(t)...)
 end
 
+function handwritten_dot(xs::Vector{MultiFloat{T,N}}, ys::Vector{MultiFloat{T,N}}) where {T,N}
+    M = pick_vector_width(T)
+
+    @assert M == N
+
+    t = zero(MultiFloat{Vec{N,T},N})
+
+    px = stridedpointer(reinterpret(T, xs))
+    py = stridedpointer(reinterpret(T, ys))
+
+    # load N Multifloats or N*N T's of at a time.
+    for i = 1:N:length(xs)
+        mx = MultiFloat(unrolleddata(vtranspose(vload(px, Unroll{1,1,N,1,N,0x0000000000000000}(((i-1)*N+1,))))))
+        my = MultiFloat(unrolleddata(vtranspose(vload(py, Unroll{1,1,N,1,N,0x0000000000000000}(((i-1)*N+1,))))))
+        
+        t += mx * my
+    end
+
+    return +(TupleOfMultiFloat(t)...)
+end
+
 using BenchmarkTools
 
 random_vec(::Type{MultiFloat{T,N}}, k) where {T,N} =
@@ -107,20 +129,24 @@ function benchmark_dot(::Type{T}) where {T<:MultiFloat}
     ys = random_vec(T, 2^13)
 
     @show vectorized_dot(xs, ys) - trivial_dot(xs, ys)
-    
+    @show handwritten_dot(xs, ys) - trivial_dot(xs, ys)
+
+    handwritten = @benchmark handwritten_dot($xs, $ys)
     vectorized = @benchmark vectorized_dot($xs, $ys)
     trivial = @benchmark trivial_dot($xs, $ys)
 
-    return vectorized, trivial
+    return handwritten, vectorized, trivial
 end
 
 function benchmark_sum(::Type{T}) where {T<:MultiFloat}
     xs = random_vec(T, 2^13)
 
     @show vectorized_sum(xs) - trivial_sum(xs)
-    
+    @show handwritten_sum(xs) - trivial_sum(xs)
+
+    handwritten = @benchmark handwritten_sum($xs)
     vectorized = @benchmark vectorized_sum($xs)
     trivial = @benchmark trivial_sum($xs)
 
-    return vectorized, trivial
+    return handwritten, vectorized, trivial
 end
