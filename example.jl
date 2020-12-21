@@ -12,20 +12,11 @@ DoubleFloat(x::MultiFloat{T,2}) where {T} = DoubleFloat{T}(x._limbs[1], x._limbs
 using VectorizationBase: VecUnroll, vtranspose, unrolleddata
 
 @generated function MultiFloatOfVec(fs::NTuple{M,MultiFloat{T,N}}) where {T,M,N}
-    if M == N == pick_vector_width(T)
-        to_vecs = [:(Vec(fs[$i]._limbs...)) for i = 1:M]
-        # do a fast transpose.
-        return quote
-            $(Expr(:meta, :inline))
-            MultiFloat(unrolleddata(vtranspose(VecUnroll(tuple($(to_vecs...))))))
-        end
-    else
-        exprs = [:(Vec($([:(fs[$j]._limbs[$i]) for j=1:M]...))) for i=1:N]
+    exprs = [:(Vec($([:(fs[$j]._limbs[$i]) for j=1:M]...))) for i=1:N]
 
-        return quote
-            $(Expr(:meta, :inline))
-            MultiFloat(tuple($(exprs...)))
-        end
+    return quote
+        $(Expr(:meta, :inline))
+        MultiFloat(tuple($(exprs...)))
     end
 end
 
@@ -62,15 +53,12 @@ using VectorizationBase: Unroll, vload, vtranspose, unrolleddata
 function handwritten_sum(xs::Vector{MultiFloat{T,N}}) where {T,N}
     M = pick_vector_width(T)
 
-    @assert M == N
-
-    t = zero(MultiFloat{Vec{N,T},N})
+    t = zero(MultiFloat{Vec{M,T},N})
 
     p = stridedpointer(reinterpret(T, xs))
 
-    # load N Multifloats or N*N T's of at a time.
-    for i = 1:N:length(xs)
-        t += MultiFloat(unrolleddata(vtranspose(vload(p, Unroll{1,1,N,1,N,0x0000000000000000}(((i-1)*N+1,))))))
+    for i = 1:M:length(xs)
+        t += MultiFloat(unrolleddata(vtranspose(vload(p, Unroll{1,1,N,1,M,0x0000000000000000}(((i-1)*N+1,))), Val{N}())))
     end
 
     return +(TupleOfMultiFloat(t)...)
@@ -101,17 +89,15 @@ end
 function handwritten_dot(xs::Vector{MultiFloat{T,N}}, ys::Vector{MultiFloat{T,N}}) where {T,N}
     M = pick_vector_width(T)
 
-    @assert M == N
-
-    t = zero(MultiFloat{Vec{N,T},N})
+    t = zero(MultiFloat{Vec{M,T},N})
 
     px = stridedpointer(reinterpret(T, xs))
     py = stridedpointer(reinterpret(T, ys))
 
-    # load N Multifloats or N*N T's of at a time.
-    for i = 1:N:length(xs)
-        mx = MultiFloat(unrolleddata(vtranspose(vload(px, Unroll{1,1,N,1,N,0x0000000000000000}(((i-1)*N+1,))))))
-        my = MultiFloat(unrolleddata(vtranspose(vload(py, Unroll{1,1,N,1,N,0x0000000000000000}(((i-1)*N+1,))))))
+    # load M Multifloats at a time.
+    for i = 1:M:length(xs)
+        mx = MultiFloat(unrolleddata(vtranspose(vload(px, Unroll{1,1,N,1,M,0x0000000000000000}(((i-1)*N+1,))), Val{N}())))
+        my = MultiFloat(unrolleddata(vtranspose(vload(py, Unroll{1,1,N,1,M,0x0000000000000000}(((i-1)*N+1,))), Val{N}())))
         
         t += mx * my
     end
