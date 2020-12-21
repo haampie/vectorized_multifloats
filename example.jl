@@ -57,8 +57,9 @@ function handwritten_sum(xs::Vector{MultiFloat{T,N}}) where {T,N}
 
     p = stridedpointer(reinterpret(T, xs))
 
-    for i = 1:M:length(xs)
-        t += MultiFloat(unrolleddata(vtranspose(vload(p, Unroll{1,1,N,1,M,0x0000000000000000}(((i-1)*N+1,))), Val{N}())))
+    for j = Base.OneTo(length(xs)÷M)
+        idx = (j - 1) * M * N + 1
+        t += MultiFloat(unrolleddata(vtranspose(vload(p, Unroll{1,1,N,1,M,0x0000000000000000}((idx,))), Val{N}())))
     end
 
     return +(TupleOfMultiFloat(t)...)
@@ -95,9 +96,10 @@ function handwritten_dot(xs::Vector{MultiFloat{T,N}}, ys::Vector{MultiFloat{T,N}
     py = stridedpointer(reinterpret(T, ys))
 
     # load M Multifloats at a time.
-    for i = 1:M:length(xs)
-        mx = MultiFloat(unrolleddata(vtranspose(vload(px, Unroll{1,1,N,1,M,0x0000000000000000}(((i-1)*N+1,))), Val{N}())))
-        my = MultiFloat(unrolleddata(vtranspose(vload(py, Unroll{1,1,N,1,M,0x0000000000000000}(((i-1)*N+1,))), Val{N}())))
+    for j = Base.OneTo(length(xs)÷M)
+        idx = (j - 1) * M * N + 1
+        mx = MultiFloat(unrolleddata(vtranspose(vload(px, Unroll{1,1,N,1,M,0x0000000000000000}((idx,))), Val{N}())))
+        my = MultiFloat(unrolleddata(vtranspose(vload(py, Unroll{1,1,N,1,M,0x0000000000000000}((idx,))), Val{N}())))
         
         t += mx * my
     end
