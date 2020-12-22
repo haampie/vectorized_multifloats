@@ -7,6 +7,23 @@ using DoubleFloats
 
 import DoubleFloats: DoubleFloat
 
+# struct of array type.
+struct MultiFloatSoA{T,N}
+    limbs::NTuple{N,Vector{T}}
+end
+
+function MultiFloatSoA(xs::Vector{MultiFloat{T,N}}) where {T,N}
+    limbs = ntuple(_ -> Vector{T}(undef, length(xs)), Val{N}())
+
+    for i in eachindex(xs)
+        for j = 1:N
+            limbs[j][i] = xs[i]._limbs[j]
+        end
+    end
+
+    return MultiFloatSoA(limbs)
+end
+
 DoubleFloat(x::MultiFloat{T,2}) where {T} = DoubleFloat{T}(x._limbs[1], x._limbs[2])
 
 using VectorizationBase: VecUnroll, vtranspose, unrolleddata
@@ -50,6 +67,28 @@ end
 
 using VectorizationBase: Unroll, vload, vtranspose, unrolleddata
 
+@generated function handwritten_sum(xs::MultiFloatSoA{T,N}) where {T,N}
+    M = pick_vector_width(T)
+
+    quote
+        len = length(xs.limbs[1])
+        t = zero(MultiFloat{Vec{$M,$T},$N})
+
+        # create N pointers
+        Base.Cartesian.@nexprs $N i -> px_i = stridedpointer(xs.limbs[i])
+        
+        j = 1
+
+        while j < len
+            # N loads.
+            t += MultiFloat(Base.Cartesian.@ntuple $N i -> vload(px_i, (MM{$M}(j),)))
+            j += $M
+        end
+
+        return +(TupleOfMultiFloat(t)...)
+    end
+end
+
 function handwritten_sum(xs::Vector{MultiFloat{T,N}}) where {T,N}
     M = pick_vector_width(T)
 
@@ -87,6 +126,31 @@ function vectorized_dot(xs::Vector{MultiFloat{T,N}}, ys::Vector{MultiFloat{T,N}}
     return +(TupleOfMultiFloat(t)...)
 end
 
+@generated function handwritten_dot(xs::MultiFloatSoA{T,N}, ys::MultiFloatSoA{T,N}) where {T,N}
+    M = pick_vector_width(T)
+
+    quote
+        len = length(xs.limbs[1])
+        t = zero(MultiFloat{Vec{$M,$T},$N})
+
+        # create N pointers
+        Base.Cartesian.@nexprs $N i -> px_i = stridedpointer(xs.limbs[i])
+        Base.Cartesian.@nexprs $N i -> py_i = stridedpointer(ys.limbs[i])
+        
+        j = 1
+
+        while j < len
+            # N loads.
+            x = MultiFloat(Base.Cartesian.@ntuple $N i -> vload(px_i, (MM{$M}(j),)))
+            y = MultiFloat(Base.Cartesian.@ntuple $N i -> vload(py_i, (MM{$M}(j),)))
+            t += x * y
+            j += $M
+        end
+
+        return +(TupleOfMultiFloat(t)...)
+    end
+end
+
 function handwritten_dot(xs::Vector{MultiFloat{T,N}}, ys::Vector{MultiFloat{T,N}}) where {T,N}
     M = pick_vector_width(T)
 
@@ -116,25 +180,33 @@ function benchmark_dot(::Type{T}) where {T<:MultiFloat}
     xs = random_vec(T, 2^13)
     ys = random_vec(T, 2^13)
 
+    xs_soa = MultiFloatSoA(xs)
+    ys_soa = MultiFloatSoA(ys)
+
     @show vectorized_dot(xs, ys) - trivial_dot(xs, ys)
     @show handwritten_dot(xs, ys) - trivial_dot(xs, ys)
+    @show handwritten_dot(xs_soa, ys_soa) - trivial_dot(xs, ys)
 
+    soa = @benchmark handwritten_dot($xs_soa, $ys_soa)
     handwritten = @benchmark handwritten_dot($xs, $ys)
     vectorized = @benchmark vectorized_dot($xs, $ys)
     trivial = @benchmark trivial_dot($xs, $ys)
 
-    return handwritten, vectorized, trivial
+    return soa, handwritten, vectorized, trivial
 end
 
 function benchmark_sum(::Type{T}) where {T<:MultiFloat}
     xs = random_vec(T, 2^13)
+    xs_soa = MultiFloatSoA(xs)
 
     @show vectorized_sum(xs) - trivial_sum(xs)
     @show handwritten_sum(xs) - trivial_sum(xs)
+    @show handwritten_sum(xs_soa) - trivial_sum(xs)
 
+    soa = @benchmark handwritten_sum($xs_soa)
     handwritten = @benchmark handwritten_sum($xs)
     vectorized = @benchmark vectorized_sum($xs)
     trivial = @benchmark trivial_sum($xs)
 
-    return handwritten, vectorized, trivial
+    return soa, handwritten, vectorized, trivial
 end
