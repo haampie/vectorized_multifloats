@@ -283,7 +283,7 @@ uuid = "4ec0a83e-493e-50e2-b9ac-8f72acf5a8f5"
 
 [[VectorizationBase]]
 deps = ["ArrayInterface", "Hwloc", "IfElse", "Libdl", "LinearAlgebra"]
-git-tree-sha1 = "f5cdd94dc102d03b3859bee17d9163bae729a7c4"
+git-tree-sha1 = "d8f00dd9f7e5865644b0d1239636c452c82450f3"
 repo-rev = "without-fastmath-everywhere"
 repo-url = "https://github.com/haampie/VectorizationBase.jl.git"
 uuid = "3d5dd08c-fd9d-11e8-17fa-ed2836048c2f"
