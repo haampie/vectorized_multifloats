@@ -14,7 +14,13 @@ import LinearAlgebra: dot, axpy!, norm, reflector!, reflectorApply!
 import Base: sum, getproperty, propertynames
 import StructArrays: staticschema, createinstance, view
 
-Base.propertynames(::MultiFloat{T,N}) where {T,N} = ntuple(i -> Symbol(:idx_, i), Val{N}())
+@generated function Base.propertynames(::MultiFloat{T,N}) where {T,N}
+    names = [Symbol(:idx_, i) for i = 1:N]
+
+    return quote
+        $(QuoteNode(tuple(names...)))
+    end
+end
 
 @generated function Base.getproperty(x::MultiFloat{T,N}, s::Symbol) where {N,T}
     symbols = [Symbol(:idx_, i) for i = 1:N]
@@ -32,7 +38,7 @@ end
     end
 end
 
-StructArrays.createinstance(::Type{MultiFloat{T,N}}, args...) where {N,T} = MultiFloat{T,N}(values(args))
+StructArrays.createinstance(::Type{MultiFloat{T,N}}, args::Vararg{Any,K}) where {N,T,K} = MultiFloat{T,N}(values(args))
 
 DoubleFloats.DoubleFloat(x::MultiFloat{T,2}) where {T} = DoubleFloat{T}(x._limbs[1], x._limbs[2])
 
@@ -200,19 +206,8 @@ end
     ξ1/ν
 end
 
-@generated function StructArrays.view(s::StructArray{T, N, C}, I::Vararg{Any,K}) where {T, N, C, K}
-
-    y = fieldnames(C)
-    data = [:(view(@inbounds(arrays[$i]), I...)) for i = 1:length(y)]
-
-    quote
-        arrays = StructArrays.fieldarrays(s)
-        StructArray{$T}(NamedTuple{$y}(tuple($(data...))))
-    end
-end
-
 Random.rand(rng::AbstractRNG, ::SamplerType{MultiFloat{T,N}}) where {T<:IEEEFloat,N} =
-    renormalize(MultiFloat(ntuple(i -> rand(T) * eps(T)^(i-1), Val{N}())))
+    renormalize(MultiFloat(ntuple(i -> rand(rng, T) * eps(T)^(i-1), Val{N}())))
 
 function benchmark_dot(::Type{T}) where {T<:MultiFloat}
     xs, ys = rand(T, 2^13), rand(T, 2^13)
