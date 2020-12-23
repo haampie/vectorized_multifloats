@@ -1,20 +1,16 @@
-using MultiFloats, VectorizationBase
+using MultiFloats, VectorizationBase, DoubleFloats, LinearAlgebra, BenchmarkTools, Random, StructArrays
+
 using VectorizationBase: extractelement, pick_vector_width
 using MultiFloats: renormalize
 using VectorizationBase: VecUnroll, Unroll, vtranspose, unrolleddata, vload
-using DoubleFloats
-using BenchmarkTools
 using Random: AbstractRNG, SamplerType
 using Base: IEEEFloat
 
 import DoubleFloats: DoubleFloat
 import Random: rand
 import LinearAlgebra: dot, axpy!, norm, reflector!, reflectorApply!
-import Base: sum
+import Base: sum, getproperty, propertynames
 import StructArrays: staticschema, createinstance
-import Base: getproperty, propertynames
-
-using StructArrays, MultiFloats
 
 Base.propertynames(::MultiFloat{T,N}) where {T,N} = ntuple(i -> Symbol(:idx_, i), Val{N}())
 
@@ -202,7 +198,7 @@ end
     ξ1/ν
 end
 
-rand(rng::AbstractRNG, ::SamplerType{MultiFloat{T,N}}) where {T<:IEEEFloat,N} =
+Random.rand(rng::AbstractRNG, ::SamplerType{MultiFloat{T,N}}) where {T<:IEEEFloat,N} =
     renormalize(MultiFloat(ntuple(i -> rand(T) * eps(T)^(i-1), Val{N}())))
 
 function benchmark_dot(::Type{T}) where {T<:MultiFloat}
