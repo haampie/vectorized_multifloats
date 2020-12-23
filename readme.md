@@ -11,7 +11,7 @@ $ julia -O3 --project=.
 
 as an example on an AVX-512 machine:
 
-```
+```julia
 julia> using VectorizedMultiFloats, MultiFloats
 
 julia> eps(Float64x4)
