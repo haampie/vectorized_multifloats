@@ -186,7 +186,7 @@ uuid = "be4d8f0f-7fa4-5f49-b795-2f01399ab2dd"
 version = "0.5.4"
 
 [[REPL]]
-deps = ["InteractiveUtils", "Markdown", "Sockets", "Unicode"]
+deps = ["InteractiveUtils", "Markdown", "Sockets"]
 uuid = "3fa0cd96-eef1-5676-8a61-b3b8758bbffb"
 
 [[Random]]

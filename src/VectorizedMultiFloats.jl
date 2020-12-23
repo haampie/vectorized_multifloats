@@ -1,10 +1,12 @@
+module VectorizedMultiFloats
+
 using MultiFloats, VectorizationBase, DoubleFloats, LinearAlgebra, BenchmarkTools, Random, StructArrays
 
 using VectorizationBase: extractelement, pick_vector_width
 using MultiFloats: renormalize
 using VectorizationBase: VecUnroll, Unroll, vtranspose, unrolleddata, vload
 using Random: AbstractRNG, SamplerType
-using Base: IEEEFloat
+using Base: IEEEFloat, conj
 
 import DoubleFloats: DoubleFloat
 import Random: rand
@@ -240,4 +242,5 @@ function benchmark_sum(::Type{T}) where {T<:MultiFloat}
     trivial_soa = @benchmark trivial_sum($xs_soa)
 
     return vectorized, trivial, trivial_soa
+end
 end
