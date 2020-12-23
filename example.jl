@@ -75,7 +75,7 @@ end
 
 function trivial_axpy!(a, xs, ys)
     @inbounds @simd ivdep for i = 1:length(xs)
-        ys[i] = xs[i] * a
+        ys[i] += xs[i] * a
     end
     return ys
 end
@@ -181,23 +181,26 @@ function benchmark_dot(::Type{T}) where {T<:MultiFloat}
     xs_soa, ys_soa = StructArray(xs), StructArray(ys)
 
     @show dot(xs, ys) - trivial_dot(xs, ys)
+    @show dot(xs_soa, ys_soa) - trivial_dot(xs, ys)
 
     vectorized = @benchmark dot($xs_soa, $ys_soa)
     trivial = @benchmark trivial_dot($xs, $ys)
+    trivial_soa = @benchmark trivial_dot($xs_soa, $ys_soa)
 
-    return vectorized, trivial
+    return vectorized, trivial, trivial_soa
 end
 
 function benchmark_axpy(::Type{T}) where {T<:MultiFloat}
     xs, ys = rand(T, 2^13), rand(T, 2^13)
     xs_soa, ys_soa = StructArray(xs), StructArray(ys)
 
-    @show norm(axpy!(T(2.0), xs, ys) - trivial_axpy!(T(2.0), xs, ys))
+    @show norm(axpy!(T(2.0), xs_soa, copy(ys_soa)) - trivial_axpy!(T(2.0), xs, copy(ys)))
 
     vectorized = @benchmark axpy!(a, xs_soa, ys_soa) setup=(a=$T(1.0); xs_soa=StructArray(rand($T, 2^13)); ys_soa=StructArray(rand($T, 2^13)))
     trivial = @benchmark trivial_axpy!(a, xs, ys) setup=(a=$T(1.0); xs=rand($T, 2^13); ys=rand($T, 2^13))
-
-    return vectorized, trivial
+    trivial_soa = @benchmark trivial_axpy!(a, xs_soa, ys_soa) setup=(a=$T(1.0); xs_soa=StructArray(rand($T, 2^13)); ys_soa=StructArray(rand($T, 2^13)))
+    
+    return vectorized, trivial, trivial_soa
 end
 
 function benchmark_sum(::Type{T}) where {T<:MultiFloat}
@@ -205,9 +208,11 @@ function benchmark_sum(::Type{T}) where {T<:MultiFloat}
     xs_soa = StructArray(xs)
 
     @show sum(xs_soa) - trivial_sum(xs)
+    @show trivial_sum(xs_soa) - trivial_sum(xs)
 
     vectorized = @benchmark sum($xs_soa)
     trivial = @benchmark trivial_sum($xs)
+    trivial_soa = @benchmark trivial_sum($xs_soa)
 
-    return vectorized, trivial
+    return vectorized, trivial, trivial_soa
 end
