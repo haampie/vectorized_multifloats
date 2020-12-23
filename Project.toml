@@ -2,4 +2,5 @@
 BenchmarkTools = "6e4b80f9-dd63-53aa-95a3-0cdb28fa8baf"
 DoubleFloats = "497a8b3b-efae-58df-a0af-a86822472b78"
 MultiFloats = "bdf0d083-296b-4888-a5b6-7498122e68a5"
+StructArrays = "09ab397b-f2b6-538f-b94a-2f83cf4a842a"
 VectorizationBase = "3d5dd08c-fd9d-11e8-17fa-ed2836048c2f"

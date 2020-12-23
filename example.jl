@@ -53,19 +53,36 @@ function trivial_sum(xs)
     return t
 end
 
-function vectorized_sum(xs::Vector{MultiFloat{T,N}}) where {T,N}
+using VectorizationBase: Unroll, vload, vtranspose, unrolleddata
+
+@generated function vectorized_sum(xs::AbstractArray{MultiFloat{T,N}}) where {T,N}
     M = pick_vector_width(T)
 
-    t = zero(MultiFloat{Vec{M,T},N})
+    load_xs = ntuple(k -> :(xs[i + $(k - 1)]), M)
 
-    for i = 1:M:length(xs)-M+1
-        t += MultiFloatOfVec(ntuple(k -> @inbounds(xs[i + k - 1]), M))
+    quote
+        @inbounds begin
+            vec_total = zero(MultiFloat{Vec{$M,$T},$N})
+
+            # iterate in steps of M
+            step, i = 1, 1
+            while step ≤ length(xs) ÷ $M
+                vec_total += MultiFloatOfVec(tuple($(load_xs...)))
+                step += 1
+                i += $M
+            end
+        
+            # sum the remainder
+            total = +(TupleOfMultiFloat(vec_total)...)
+            while i ≤ length(xs)
+                total += xs[i]
+                i += 1
+            end
+
+            return total
+        end
     end
-
-    return +(TupleOfMultiFloat(t)...)
 end
-
-using VectorizationBase: Unroll, vload, vtranspose, unrolleddata
 
 @generated function handwritten_sum(xs::MultiFloatSoA{T,N}) where {T,N}
     M = pick_vector_width(T)
@@ -112,18 +129,34 @@ function trivial_dot(xs, ys)
     return t
 end
 
-function vectorized_dot(xs::Vector{MultiFloat{T,N}}, ys::Vector{MultiFloat{T,N}}) where {T,N}
+@generated function vectorized_dot(xs::AbstractArray{MultiFloat{T,N}}, ys::AbstractArray{MultiFloat{T,N}}) where {T,N}
     M = pick_vector_width(T)
 
-    t = zero(MultiFloat{Vec{M,T},N})
+    load_xs = ntuple(k -> :(xs[i + $(k - 1)]), M)
+    load_ys = ntuple(k -> :(ys[i + $(k - 1)]), M)
 
-    for i = 1:M:length(xs)-M+1
-        x = MultiFloatOfVec(ntuple(k -> @inbounds(xs[i + k - 1]), M))
-        y = MultiFloatOfVec(ntuple(k -> @inbounds(ys[i + k - 1]), M))
-        t += x * y
+    quote
+        vec_total = zero(MultiFloat{Vec{$M,$T},$N})
+
+        # iterate in steps of M
+        step, i = 1, 1
+        @inbounds while step ≤ length(xs) ÷ $M
+            x = MultiFloatOfVec(tuple($(load_xs...)))
+            y = MultiFloatOfVec(tuple($(load_ys...)))
+            vec_total += x * y
+            step += 1
+            i += $M
+        end
+    
+        # sum the remainder
+        @inbounds total = +(TupleOfMultiFloat(vec_total)...)
+        while i ≤ length(xs)
+            @inbounds total += xs[i] * ys[i]
+            i += 1
+        end
+
+        return total
     end
-  
-    return +(TupleOfMultiFloat(t)...)
 end
 
 @generated function handwritten_dot(xs::MultiFloatSoA{T,N}, ys::MultiFloatSoA{T,N}) where {T,N}
@@ -180,33 +213,54 @@ function benchmark_dot(::Type{T}) where {T<:MultiFloat}
     xs = random_vec(T, 2^13)
     ys = random_vec(T, 2^13)
 
-    xs_soa = MultiFloatSoA(xs)
-    ys_soa = MultiFloatSoA(ys)
+    xs_soa = StructArray(xs)
+    ys_soa = StructArray(ys)
 
-    @show vectorized_dot(xs, ys) - trivial_dot(xs, ys)
     @show handwritten_dot(xs, ys) - trivial_dot(xs, ys)
-    @show handwritten_dot(xs_soa, ys_soa) - trivial_dot(xs, ys)
+    @show vectorized_dot(xs_soa, ys_soa) - trivial_dot(xs, ys)
 
-    soa = @benchmark handwritten_dot($xs_soa, $ys_soa)
     handwritten = @benchmark handwritten_dot($xs, $ys)
-    vectorized = @benchmark vectorized_dot($xs, $ys)
+    vectorized = @benchmark vectorized_dot($xs_soa, $ys_soa)
     trivial = @benchmark trivial_dot($xs, $ys)
 
-    return soa, handwritten, vectorized, trivial
+    return handwritten, vectorized, trivial
 end
 
 function benchmark_sum(::Type{T}) where {T<:MultiFloat}
     xs = random_vec(T, 2^13)
-    xs_soa = MultiFloatSoA(xs)
+    xs_soa = StructArray(xs)
 
-    @show vectorized_sum(xs) - trivial_sum(xs)
     @show handwritten_sum(xs) - trivial_sum(xs)
-    @show handwritten_sum(xs_soa) - trivial_sum(xs)
+    @show vectorized_sum(xs_soa) - trivial_sum(xs)
 
-    soa = @benchmark handwritten_sum($xs_soa)
     handwritten = @benchmark handwritten_sum($xs)
-    vectorized = @benchmark vectorized_sum($xs)
+    vectorized = @benchmark vectorized_sum($xs_soa)
     trivial = @benchmark trivial_sum($xs)
 
-    return soa, handwritten, vectorized, trivial
+    return handwritten, vectorized, trivial
 end
+
+using StructArrays, MultiFloats
+
+import StructArrays: staticschema, createinstance
+import Base: getproperty, propertynames
+
+propertynames(::MultiFloat{T,N}) where {T,N} = ntuple(i -> Symbol(:idx_, i), Val{N}())
+
+@generated function getproperty(x::MultiFloat{T,N}, s::Symbol) where {N,T}
+    symbols = [Symbol(:idx_, i) for i = 1:N]
+    quote
+        $(Expr(:meta, :inline))
+        $([:(s === $(QuoteNode(symbols[i])) && return getfield(x, 1)[$i]) for i = 1:N]...)
+        return getfield(x, s)
+    end
+end
+
+@generated function staticschema(::Type{MultiFloat{T,N}}) where {N,T}
+    symbols = [Symbol(:idx_, i) for i = 1:N]
+    quote
+        NamedTuple{$(QuoteNode(ntuple(i -> symbols[i], Val{N}()))), NTuple{$N,$T}}
+    end
+end
+
+createinstance(::Type{MultiFloat{T,N}}, args...) where {N,T} = MultiFloat{T,N}(values(args))
