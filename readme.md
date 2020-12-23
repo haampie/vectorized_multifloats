@@ -20,17 +20,17 @@ julia> eps(Float64x4)
 julia> setprecision(213); eps(BigFloat)
 1.51929083932156779959571876312991314467535453337919119460476479853e-64
 
-julia> mat = rand(Float64x4, 1000, 1000);
+julia> A_F64x4 = rand(Float64x4, 1000, 1000);
 
-julia> z = BigFloat.(mat);
+julia> A_bigfloat = BigFloat.(mat);
 
-julia> @time Matrix(LinearAlgebra.qrfactUnblocked!(StructArray(mat)).factors);
+julia> @time Matrix(LinearAlgebra.qrfactUnblocked!(StructArray(A_F64x4)).factors);
   8.141877 seconds (16 allocations: 61.066 MiB)
 
-julia> @time LinearAlgebra.qrfactUnblocked!(mat).factors;
+julia> @time LinearAlgebra.qrfactUnblocked!(A_F64x4).factors;
  33.060760 seconds (4 allocations: 31.391 KiB)
 
-julia> @time LinearAlgebra.qrfactUnblocked!(z).factors;
+julia> @time LinearAlgebra.qrfactUnblocked!(A_bigfloat).factors;
 228.394904 seconds (2.67 G allocations: 139.130 GiB, 46.52% gc time)
 ```
 
