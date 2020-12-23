@@ -22,6 +22,8 @@ julia> setprecision(213); eps(BigFloat)
 
 julia> mat = rand(Float64x4, 1000, 1000);
 
+julia> z = BigFloat.(mat);
+
 julia> @time Matrix(LinearAlgebra.qrfactUnblocked!(StructArray(mat)).factors);
   8.141877 seconds (16 allocations: 61.066 MiB)
 
