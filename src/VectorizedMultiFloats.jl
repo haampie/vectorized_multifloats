@@ -12,7 +12,7 @@ import DoubleFloats: DoubleFloat
 import Random: rand
 import LinearAlgebra: dot, axpy!, norm, reflector!, reflectorApply!
 import Base: sum, getproperty, propertynames
-import StructArrays: staticschema, createinstance
+import StructArrays: staticschema, createinstance, view
 
 Base.propertynames(::MultiFloat{T,N}) where {T,N} = ntuple(i -> Symbol(:idx_, i), Val{N}())
 
@@ -181,7 +181,7 @@ LinearAlgebra.norm(xs::AbstractArray{<:MultiFloat}) = sqrt(dot(xs, xs))
     return A
 end
 
-@inline function LinearAlgebra.reflector!(x::AbstractVector)
+@inline function LinearAlgebra.reflector!(x::AbstractVector{<:MultiFloat})
     n = length(x)
     n == 0 && return zero(eltype(x))
     @inbounds begin
@@ -198,6 +198,17 @@ end
         end
     end
     ξ1/ν
+end
+
+@generated function StructArrays.view(s::StructArray{T, N, C}, I::Vararg{Any,K}) where {T, N, C, K}
+
+    y = fieldnames(C)
+    data = [:(view(@inbounds(arrays[$i]), I...)) for i = 1:length(y)]
+
+    quote
+        arrays = StructArrays.fieldarrays(s)
+        StructArray{$T}(NamedTuple{$y}(tuple($(data...))))
+    end
 end
 
 Random.rand(rng::AbstractRNG, ::SamplerType{MultiFloat{T,N}}) where {T<:IEEEFloat,N} =
@@ -242,5 +253,21 @@ function benchmark_sum(::Type{T}) where {T<:MultiFloat}
     trivial_soa = @benchmark trivial_sum($xs_soa)
 
     return vectorized, trivial, trivial_soa
+end
+
+function benchmark_reflector(::Type{T}) where {T<:MultiFloat}
+    xs = rand(T, 200)
+    A = rand(T, 200, 200)
+    t = rand(T)
+
+    xs_soa = StructArray(xs)
+    A_soa = StructArray(A)
+
+    @show norm(reflectorApply!(xs, t, deepcopy(A)) - reflectorApply!(xs_soa, t, deepcopy(A_soa)))
+
+    vectorized = @benchmark reflectorApply!($xs_soa, $t, B) setup=(B=deepcopy($A_soa))
+    trivial = @benchmark reflectorApply!($xs, $t, B) setup=(B=deepcopy($A))
+
+    return vectorized, trivial
 end
 end
