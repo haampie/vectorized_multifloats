@@ -9,18 +9,16 @@ using Base: IEEEFloat
 
 import DoubleFloats: DoubleFloat
 import Random: rand
-import LinearAlgebra: dot, axpy!, norm
+import LinearAlgebra: dot, axpy!, norm, reflector!, reflectorApply!
 import Base: sum
-
-
-using StructArrays, MultiFloats
-
 import StructArrays: staticschema, createinstance
 import Base: getproperty, propertynames
 
-propertynames(::MultiFloat{T,N}) where {T,N} = ntuple(i -> Symbol(:idx_, i), Val{N}())
+using StructArrays, MultiFloats
 
-@generated function getproperty(x::MultiFloat{T,N}, s::Symbol) where {N,T}
+Base.propertynames(::MultiFloat{T,N}) where {T,N} = ntuple(i -> Symbol(:idx_, i), Val{N}())
+
+@generated function Base.getproperty(x::MultiFloat{T,N}, s::Symbol) where {N,T}
     symbols = [Symbol(:idx_, i) for i = 1:N]
     quote
         $(Expr(:meta, :inline))
@@ -29,16 +27,16 @@ propertynames(::MultiFloat{T,N}) where {T,N} = ntuple(i -> Symbol(:idx_, i), Val
     end
 end
 
-@generated function staticschema(::Type{MultiFloat{T,N}}) where {N,T}
+@generated function StructArrays.staticschema(::Type{MultiFloat{T,N}}) where {N,T}
     symbols = [Symbol(:idx_, i) for i = 1:N]
     quote
         NamedTuple{$(QuoteNode(ntuple(i -> symbols[i], Val{N}()))), NTuple{$N,$T}}
     end
 end
 
-createinstance(::Type{MultiFloat{T,N}}, args...) where {N,T} = MultiFloat{T,N}(values(args))
+StructArrays.createinstance(::Type{MultiFloat{T,N}}, args...) where {N,T} = MultiFloat{T,N}(values(args))
 
-DoubleFloat(x::MultiFloat{T,2}) where {T} = DoubleFloat{T}(x._limbs[1], x._limbs[2])
+DoubleFloats.DoubleFloat(x::MultiFloat{T,2}) where {T} = DoubleFloat{T}(x._limbs[1], x._limbs[2])
 
 @generated function MultiFloatOfVec(fs::NTuple{M,MultiFloat{T,N}}) where {T,M,N}
     exprs = [:(Vec($([:(fs[$j]._limbs[$i]) for j=1:M]...))) for i=1:N]
@@ -80,7 +78,7 @@ function trivial_axpy!(a, xs, ys)
     return ys
 end
 
-@generated function sum(xs::AbstractArray{MultiFloat{T,N}}) where {T,N}
+@generated function Base.sum(xs::AbstractArray{MultiFloat{T,N}}) where {T,N}
     M = pick_vector_width(T)
 
     load_xs = ntuple(k -> :(xs[i + $(k - 1)]), M)
@@ -109,7 +107,7 @@ end
     end
 end
 
-@generated function dot(xs::AbstractArray{MultiFloat{T,N}}, ys::AbstractArray{MultiFloat{T,N}}) where {T,N}
+@generated function LinearAlgebra.dot(xs::AbstractArray{MultiFloat{T,N}}, ys::AbstractArray{MultiFloat{T,N}}) where {T,N}
     M = pick_vector_width(T)
 
     load_xs = ntuple(k -> :(xs[i + $(k - 1)]), M)
@@ -139,7 +137,7 @@ end
     end
 end
 
-@generated function axpy!(a::MultiFloat{T,N}, xs::AbstractArray{MultiFloat{T,N}}, ys::AbstractArray{MultiFloat{T,N}}) where {T,N}
+@generated function LinearAlgebra.axpy!(a::MultiFloat{T,N}, xs::AbstractArray{MultiFloat{T,N}}, ys::AbstractArray{MultiFloat{T,N}}) where {T,N}
     M = pick_vector_width(T)
 
     load_xs = ntuple(k -> :(xs[i + $(k - 1)]), M)
@@ -171,7 +169,38 @@ end
     end
 end
 
-norm(xs::AbstractArray{<:MultiFloat}) = sqrt(dot(xs, xs))
+LinearAlgebra.norm(xs::AbstractArray{<:MultiFloat}) = sqrt(dot(xs, xs))
+
+@inline function LinearAlgebra.reflectorApply!(x::AbstractVector, τ::Number, A::AbstractMatrix)
+    m, n = size(A)
+    m == 0 && return A
+    @inbounds for j = 1:n
+        Aj, xj = view(A, 2:m, j), view(x, 2:m)
+        vAj = conj(τ)*(A[1, j] + dot(xj, Aj))
+        A[1, j] -= vAj
+        axpy!(-vAj, xj, Aj)
+    end
+    return A
+end
+
+@inline function LinearAlgebra.reflector!(x::AbstractVector)
+    n = length(x)
+    n == 0 && return zero(eltype(x))
+    @inbounds begin
+        ξ1 = x[1]
+        normu = norm(x)
+        if iszero(normu)
+            return zero(ξ1/normu)
+        end
+        ν = copysign(normu, real(ξ1))
+        ξ1 += ν
+        x[1] = -ν
+        for i = 2:n
+            x[i] /= ξ1
+        end
+    end
+    ξ1/ν
+end
 
 rand(rng::AbstractRNG, ::SamplerType{MultiFloat{T,N}}) where {T<:IEEEFloat,N} =
     renormalize(MultiFloat(ntuple(i -> rand(T) * eps(T)^(i-1), Val{N}())))
