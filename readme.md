@@ -12,7 +12,7 @@ $ julia -O3 --project=.
 as an example on an AVX-512 machine:
 
 ```julia
-julia> using VectorizedMultiFloats, MultiFloats
+julia> using VectorizedMultiFloats, MultiFloats, StructArrays, LinearAlgebra
 
 julia> eps(Float64x4)
 2.4308653429145085e-63
@@ -22,7 +22,7 @@ julia> setprecision(213); eps(BigFloat)
 
 julia> A_F64x4 = rand(Float64x4, 1000, 1000);
 
-julia> A_bigfloat = BigFloat.(mat);
+julia> A_bigfloat = BigFloat.(A_F64x4);
 
 julia> @time Matrix(LinearAlgebra.qrfactUnblocked!(StructArray(A_F64x4)).factors);
   8.141877 seconds (16 allocations: 61.066 MiB)
